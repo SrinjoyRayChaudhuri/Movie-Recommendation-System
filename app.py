@@ -2,13 +2,15 @@ import pickle
 import streamlit as st
 import requests
 from urllib.parse import quote
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 OMDB_API_KEY = "8cffa18c"
 
 
 def fetch_poster(movie_title):
-    movie_title = quote(movie_title)  # handle spaces & special characters
+    movie_title = quote(movie_title)
     url = f"http://www.omdbapi.com/?t={movie_title}&apikey={OMDB_API_KEY}"
     response = requests.get(url).json()
 
@@ -16,6 +18,19 @@ def fetch_poster(movie_title):
         return response["Poster"]
     else:
         return "https://via.placeholder.com/300x450?text=No+Image"
+
+
+def fetch_movie_details(movie_title):
+    movie_title = quote(movie_title)
+    url = f"http://www.omdbapi.com/?t={movie_title}&apikey={OMDB_API_KEY}"
+    response = requests.get(url).json()
+
+    return {
+        "Year": response.get("Year", "N/A"),
+        "Genre": response.get("Genre", "N/A"),
+        "imdbRating": response.get("imdbRating", "N/A"),
+        "Plot": response.get("Plot", "N/A")
+    }
 
 
 def recommend(movie):
@@ -30,46 +45,41 @@ def recommend(movie):
     recommended_movie_posters = []
 
     for i in distances[1:6]:
-        movie_title = movies.iloc[i[0]].title
-        recommended_movie_names.append(movie_title)
-        recommended_movie_posters.append(fetch_poster(movie_title))
+        title = movies.iloc[i[0]].title
+        recommended_movie_names.append(title)
+        recommended_movie_posters.append(fetch_poster(title))
 
     return recommended_movie_names, recommended_movie_posters
 
 
-st.header('Movie Recommender System')
+# ================= Streamlit UI =================
 
-movies = pickle.load(open('movie_list.pkl', 'rb'))
-similarity = pickle.load(open('similarity.pkl', 'rb'))
+st.header("Movie Recommender System")
 
+movies = pickle.load(open("movie_list.pkl", "rb"))
 
-movie_list = movies['title'].values
+cv = CountVectorizer(max_features=5000, stop_words="english")
+vectors = cv.fit_transform(movies["tags"]).toarray()
+similarity = cosine_similarity(vectors)
+
+movie_list = movies["title"].values
 selected_movie = st.selectbox(
     "Type or select a movie from the dropdown",
     movie_list
 )
 
-if st.button('Show Recommendation'):
+if st.button("Show Recommendation"):
     recommended_movie_names, recommended_movie_posters = recommend(selected_movie)
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    for name, poster in zip(recommended_movie_names, recommended_movie_posters):
+        details = fetch_movie_details(name)
 
-    with col1:
-        st.text(recommended_movie_names[0])
-        st.image(recommended_movie_posters[0])
+        st.subheader(name)
+        st.image(poster, width=300)
 
-    with col2:
-        st.text(recommended_movie_names[1])
-        st.image(recommended_movie_posters[1])
+        st.write(f"🎬 **Year:** {details['Year']}")
+        st.write(f"⭐ **IMDb Rating:** {details['imdbRating']}")
+        st.write(f"🎭 **Genre:** {details['Genre']}")
+        st.write(f"📝 **Plot:** {details['Plot']}")
 
-    with col3:
-        st.text(recommended_movie_names[2])
-        st.image(recommended_movie_posters[2])
-
-    with col4:
-        st.text(recommended_movie_names[3])
-        st.image(recommended_movie_posters[3])
-
-    with col5:
-        st.text(recommended_movie_names[4])
-        st.image(recommended_movie_posters[4])
+        st.markdown("---")
